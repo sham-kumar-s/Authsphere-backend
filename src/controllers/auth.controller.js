@@ -1,9 +1,7 @@
 import bcrypt from "bcrypt";
 import User from "../models/User.model.js";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-} from "../utils/jwt.js";
+import { generateAccessToken, generateRefreshToken } from "../utils/jwt.js";
+import jwt from "jsonwebtoken"
 
 export const signup = async (req, res) => {
   const { email, password } = req.body;
@@ -39,5 +37,74 @@ export const login = async (req, res) => {
     id: user._id,
   });
 
-  res.json({ accessToken, refreshToken });
+  user.refreshToken = refreshToken;
+  await user.save();
+
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  // res.json({ accessToken, refreshToken });
+  res.json({ accessToken });
 };
+
+export const refreshToken = async (req, res) => {
+  const { refreshToken } = req.cookies.refreshToken;
+  if (!refreshToken) return res.sendStatus(401);
+
+  const user = await User.findOne({ refreshToken });
+  if (!user) return res.sendStatus(403);
+
+  jwt.verify(
+    refreshToken,
+    process.env.JWT_REFRESH_SECRET,
+    async (err, decoded) => {
+      if (err) return res.sendStatus(403);
+
+      // Rotate Token
+      const newAccessToken = generateAccessToken({
+        id: user._id,
+        role: user.role,
+      });
+
+      const newRefreshToken = generateRefreshToken({
+        id: user._id,
+      });
+
+      user.refreshToken = newRefreshToken;
+      await user.save();
+
+      // 🔁 rotate cookie
+      res.cookie("refreshToken", newRefreshToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.json({
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      });
+    }
+  );
+};
+
+export const logout = async () => {
+  const refreshToken = req.cookies.refreshToken;
+
+  if(refreshToken){
+    const user = await User.findOne({ email });
+
+    if(user){
+      user.refreshToken = null;
+      await user.save();
+    } 
+
+  }
+  
+}
