@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import User from "../models/User.model.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt.js";
-import jwt from "jsonwebtoken"
+import jwt from "jsonwebtoken";
 
 export const signup = async (req, res) => {
   const { email, password } = req.body;
@@ -43,7 +43,7 @@ export const login = async (req, res) => {
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: false,
-    sameSite: "lax",
+    sameSite: "none",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
@@ -81,7 +81,7 @@ export const refreshToken = async (req, res) => {
       res.cookie("refreshToken", newRefreshToken, {
         httpOnly: true,
         secure: false,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
@@ -94,17 +94,23 @@ export const refreshToken = async (req, res) => {
   );
 };
 
-export const logout = async () => {
+export const logout = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
 
-  if(refreshToken){
-    const user = await User.findOne({ email });
+  if (refreshToken) {
+    const user = await User.findOne({ refreshToken });
 
-    if(user){
+    if (user) {
       user.refreshToken = null;
       await user.save();
-    } 
-
+    }
   }
-  
-}
+
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    sameSite: "none",
+    secure: false,
+  });
+
+  res.json({ message: "Logged out" });
+};
